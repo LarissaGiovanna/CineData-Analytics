@@ -176,3 +176,24 @@ registers = response["value"]
 print(registers)
 print(len(registers))
 print(registers[0])
+
+# Gravando os dados da cotação na tabela
+
+from pyspark.sql.types import StructType, StructField, StringType, DoubleType
+
+# declarando a struct/estrutura das colunas que serão criadas referentes aos dados da cotação, onde dataHoraCotacao é uma string e cotacaoCompra é um double
+schema = StructType([
+    StructField("dataHoraCotacao", StringType(), True),
+    StructField("cotacaoCompra", DoubleType(), True)
+])
+
+# criando um dataframe com os dados da cotação, seguindo a struct schema declarada
+df_dolar = spark.createDataFrame(registers, schema=schema)
+
+# criando a tabela do ingestion_datetime e gravando os dados da cotação
+df_dolar\
+    .withColumn("ingestion_datetime", current_timestamp()) \
+    .write.format("delta").mode("append") \
+    .saveAsTable(f"{catalog}.bronze.tb_cotacao_dolar")
+
+display(spark.table(f"{catalog}.bronze.tb_cotacao_dolar"))
