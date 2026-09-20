@@ -88,27 +88,27 @@ df_reviews_raw = spark.read.csv(path_reviews, header=True,multiLine=True)
 
 df_info_raw \
     .withColumn("ingestion_datetime", current_timestamp()) \
-    .write.format("delta").mode("overwrite") \
+    .write.format("delta").mode("append") \
     .saveAsTable(f"{catalog}.bronze.tb_movies_info")
 
 df_financials_raw \
     .withColumn("ingestion_datetime", current_timestamp()) \
-    .write.format("delta").mode("overwrite") \
+    .write.format("delta").mode("append") \
     .saveAsTable(f"{catalog}.bronze.tb_movies_financials")
 
 df_metrics_raw \
     .withColumn("ingestion_datetime", current_timestamp()) \
-    .write.format("delta").mode("overwrite") \
+    .write.format("delta").mode("append") \
     .saveAsTable(f"{catalog}.bronze.tb_movies_metrics")
 
 df_credits_and_tags_raw \
     .withColumn("ingestion_datetime", current_timestamp()) \
-    .write.format("delta").mode("overwrite") \
+    .write.format("delta").mode("append") \
     .saveAsTable(f"{catalog}.bronze.tb_credits_and_tags")
 
 df_reviews_raw \
     .withColumn("ingestion_datetime", current_timestamp()) \
-    .write.format("delta").mode("overwrite") \
+    .write.format("delta").mode("append") \
     .saveAsTable(f"{catalog}.bronze.tb_movies_reviews")
 
 # visualizando uma prévia das tabelas gravadas
@@ -117,3 +117,62 @@ display(spark.table(f"{catalog}.bronze.tb_movies_financials").limit(5))
 display(spark.table(f"{catalog}.bronze.tb_movies_metrics").limit(5))
 display(spark.table(f"{catalog}.bronze.tb_credits_and_tags").limit(5))
 display(spark.table(f"{catalog}.bronze.tb_movies_reviews").limit(5))
+
+#3. extração da cotação do dolar
+
+# extraindo as datas de hoje e de 7 dias atrás para buscar na API
+from datetime import datetime, timedelta
+
+#data atual
+now_date = datetime.today()
+#data de 7 dias atrás
+last_date = now_date - timedelta(days=7)
+
+#convertendo para o formato mm-dd-yyyy
+now_date = now_date.strftime("%m-%d-%Y")
+last_date = last_date.strftime("%m-%d-%Y")
+
+# criando o widget para receber a data de extração do dólar
+dbutils.widgets.text("begin_date", last_date, "begin_date")
+dbutils.widgets.text("end_date", now_date, "end_date")
+
+#guardando esses valores em variáveis
+begin_date_format = dbutils.widgets.get("begin_date")
+end_date_format = dbutils.widgets.get("end_date")
+
+print(begin_date_format)
+print(end_date_format)
+
+# buscando a cotação do dolar na api: https://olinda.bcb.gov.br/olinda/servico/PTAX/versao/v1/odata/CotacaoDolarPeriodo(dataInicial=@dataInicial,dataFinalCotacao=@dataFinalCotacao)?@dataInicial='{data_inicio_formatada}'&@dataFinalCotacao='{data_fim_formatada}'&$select=dataHoraCotacao,cotacaoCompra&$format=json
+
+# buscando a cotação do dolar na api: https://olinda.bcb.gov.br/olinda/servico/PTAX/versao/v1/odata/CotacaoDolarPeriodo(dataInicial=@dataInicial,dataFinalCotacao=@dataFinalCotacao)?@dataInicial='{data_inicio_formatada}'&@dataFinalCotacao='{data_fim_formatada}'&$select=dataHoraCotacao,cotacaoCompra&$format=json
+
+url = f"https://olinda.bcb.gov.br/olinda/servico/PTAX/versao/v1/odata/CotacaoDolarPeriodo(dataInicial=@dataInicial,dataFinalCotacao=@dataFinalCotacao)?@dataInicial='{begin_date_format}'&@dataFinalCotacao='{end_date_format}'&$select=dataHoraCotacao,cotacaoCompra&$format=json"
+print(url)
+
+import requests
+
+# fazendo o get na api
+try:
+    response = requests.get(url, timeout=20)
+    print(response.status_code)
+    response.raise_for_status()
+    # convertendo para json
+    response = response.json()
+    
+except requests.exceptions.ConnectionError:
+    print("Não foi possível conectar à API. Lendo os dados diretamente do arquivo cotacao_dolar.json:")
+    with open(f"{landing_path}/cotacao_dolar.json", "r") as file:
+        import json
+        response = json.load(file)
+        
+except requests.exceptions.HTTPError as err:
+    print(f"Ocorreu um erro HTTP: {err}")
+
+
+
+# buscando apenas a lista dos valores
+registers = response["value"]
+print(registers)
+print(len(registers))
+print(registers[0])
